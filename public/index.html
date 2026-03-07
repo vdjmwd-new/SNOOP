@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SNOOP - 3D Noir Dog Detective</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- 3D 캔버스는 main.js에서 전체 화면으로 생성됩니다 -->
+
+    <!-- 화면 상단/좌우 UI 오버레이 -->
+    <div id="overlay-ui">
+      <header class="ui-header">
+        <div class="ui-title-block">
+          <h1 class="game-title">SNOOP</h1>
+          <p class="subtitle">야간 후각 수사 3D 기록 파일</p>
+        </div>
+        <div class="ui-header-right">
+          <div class="ui-tag-row">
+            <span class="ui-tag">WASD: 이동</span>
+            <span class="ui-tag">마우스: 시점</span>
+            <span class="ui-tag">T: 낮/밤</span>
+            <span class="ui-tag">E: 상호작용</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="ui-main-row">
+        <div class="ui-left">
+          <div class="ui-card">
+            <div class="ui-card-header">
+              <span class="card-label">CASE FILE</span>
+              <span class="case-id">사건번호: #SNP-3D-001</span>
+            </div>
+            <div class="ui-card-body">
+              <h2 class="card-title">시작 시퀀스 지침</h2>
+              <p class="card-text">
+                흑백의 밤거리, 낯선 피 냄새와 약품 냄새가 섞여 있다. 바닥에 떠다니는 유색 냄새 자취를 따라가
+                첫 단서 상자에 도달하라.
+              </p>
+              <p class="card-text small">
+                * 화면을 클릭해 시점을 고정하고, WASD로 강아지의 낮은 눈높이에서 골목을 탐색하세요.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="ui-right">
+          <button id="notebookToggle" class="noir-button primary ui-notebook-button">
+            추리 수첩
+          </button>
+          <div id="sequenceStatus" class="ui-sequence-status">
+            냄새 경로를 따라 빛나는 지점까지 이동하세요.
+          </div>
+        </div>
+      </div>
+
+      <div id="interactionHint" class="ui-interaction-hint hidden">
+        E 키를 눌러 단서 상자를 조사
+      </div>
+    </div>
+
+    <!-- 중앙 조준선 (Raycast 기준) -->
+    <div id="crosshair">+</div>
+
+    <!-- 추리 수첩 UI -->
+    <aside id="notebook" class="notebook hidden">
+      <div class="notebook-inner">
+        <div class="notebook-header">
+          <h2>추리 수첩</h2>
+          <button id="notebookClose" class="icon-button" aria-label="수첩 닫기">
+            ×
+          </button>
+        </div>
+        <div class="notebook-body notebook-body-3col">
+          <div class="notebook-section">
+            <h3>후각 단서 경로</h3>
+            <p class="notebook-placeholder">
+              바닥에 남은 유색 냄새 자국은 피해자가 마지막으로 이동한 동선을 의미한다.<br />
+              파란색은 약품 냄새, 노란색은 낯선 동물의 체취로 추정된다.
+            </p>
+          </div>
+          <div class="notebook-section">
+            <h3>첫 단서 상자</h3>
+            <p class="notebook-placeholder" id="notebookClueText">
+              아직 단서 상자를 조사하지 않았다.<br />
+              냄새 경로 끝의 빛나는 상자에 접근해 E 키로 상호작용하라.
+            </p>
+          </div>
+          <div class="notebook-section notebook-smell-section">
+            <h3>🐾 냄새 수집 기록</h3>
+            <div id="notebookSmellLog" class="smell-log">
+              <p class="notebook-placeholder smell-log-empty">
+                아직 수집한 냄새가 없다.<br />
+                냄새 구체에 접근하면 자동으로 수집된다.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 수첩/연출용 어두운 오버레이 -->
+    <div id="overlay" class="overlay hidden"></div>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "name": "snoop-noir-dog-detective",
+  "version": "1.0.0",
+  "description": "SNOOP - 느와르풍 강아지 탐정 웹 기반 추리 어드벤처 게임 (2D & 3D 실험용)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "game",
+    "noir",
+    "adventure",
+    "detective",
+    "node",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.0",
+    "three": "^0.160.0"
+  }
+}

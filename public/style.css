@@ -1,0 +1,473 @@
+:root {
+  --bg: #050505;
+  --bg-alt: #151515;
+  --bg-paper: #111111;
+  --border: #3b3b3b;
+  --border-soft: #2a2a2a;
+  --text-main: #f1f1f1;
+  --text-muted: #909090;
+  --accent-red: #b30000;
+  --accent-red-soft: #661111;
+  --accent-line: #c0c0c0;
+  --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.85);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: "Courier New", Courier, monospace;
+  background: #000;
+  color: var(--text-main);
+}
+
+canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.game-title {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--accent-red);
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.noir-button {
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-radius: 2px;
+  border: 1px solid var(--accent-line);
+  background: transparent;
+  color: var(--text-main);
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+    transform 0.05s ease;
+}
+
+.noir-button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-1px);
+}
+
+.noir-button.primary {
+  background: var(--accent-red-soft);
+  border-color: var(--accent-red);
+}
+
+.noir-button.primary:hover {
+  background: var(--accent-red);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at top, rgba(0, 0, 0, 0.4), #000);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 20;
+}
+
+.overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.hidden {
+  display: none;
+}
+
+/* 상단/측면 UI 오버레이 */
+
+#overlay-ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  z-index: 15;
+}
+
+.ui-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+
+.ui-title-block {
+  pointer-events: none;
+}
+
+.ui-header-right {
+  pointer-events: none;
+}
+
+.ui-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.ui-tag {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-line);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.ui-main-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.ui-left,
+.ui-right {
+  pointer-events: none;
+}
+
+.ui-card {
+  max-width: 460px;
+  background: rgba(5, 5, 5, 0.9);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+}
+
+.ui-card-header {
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--text-muted);
+}
+
+.case-id {
+  font-size: 10px;
+  color: var(--accent-red);
+}
+
+.ui-card-body {
+  padding: 10px 12px 12px;
+}
+
+.card-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.card-text {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.card-text.small {
+  font-size: 11px;
+}
+
+.ui-notebook-button {
+  pointer-events: auto;
+  margin-bottom: 8px;
+}
+
+.ui-sequence-status {
+  max-width: 260px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+@media (max-width: 900px) {
+  .ui-main-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ui-sequence-status {
+    margin-top: 4px;
+  }
+}
+
+/* 조준선 & 상호작용 힌트 */
+
+#crosshair {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--accent-line);
+  font-size: 18px;
+  pointer-events: none;
+  z-index: 14;
+  text-shadow: 0 0 4px #000;
+}
+
+.ui-interaction-hint {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-red);
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--accent-red);
+  z-index: 16;
+}
+
+/* 추리 수첩 */
+
+.notebook {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 25;
+}
+
+.notebook.open {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.notebook-inner {
+  width: min(560px, 100% - 40px);
+  max-height: min(520px, 100% - 80px);
+  background: #111;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-direction: column;
+}
+
+.notebook-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.notebook-header h2 {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.notebook-body {
+  padding: 12px 14px 14px;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 12px;
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .notebook-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.notebook-section h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.notebook-placeholder {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.icon-button {
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+/* 수첩 3열 레이아웃 */
+.notebook-body-3col {
+  grid-template-columns: 1.2fr 1fr 1.2fr;
+}
+
+@media (max-width: 900px) {
+  .notebook-body-3col {
+    grid-template-columns: 1fr;
+  }
+}
+
+.notebook-inner {
+  width: min(780px, 100% - 40px);
+  max-height: min(560px, 100% - 80px);
+}
+
+/* 냄새 수집 기록 영역 */
+.notebook-smell-section {
+  border-left: 1px solid var(--border-soft);
+  padding-left: 12px;
+}
+
+.smell-log {
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.smell-log::-webkit-scrollbar {
+  width: 4px;
+}
+
+.smell-log::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.smell-log::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.smell-log-empty {
+  font-style: italic;
+}
+
+/* 냄새 수집 항목 */
+.smell-entry {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  padding: 8px;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.smell-entry-new {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.smell-entry-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.smell-stamp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 2px solid;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.stamp-face {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 7px;
+  line-height: 1;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: 18px;
+}
+
+.stamp-eye {
+  font-size: 5px;
+  color: var(--text-main);
+}
+
+.stamp-nose {
+  font-size: 6px;
+  color: var(--accent-red);
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-top: -1px;
+}
+
+.smell-name {
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.smell-number {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-left: auto;
+  letter-spacing: 0.1em;
+}
+
+.smell-desc {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
