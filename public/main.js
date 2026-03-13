@@ -1,4 +1,5 @@
-import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 /* ───────────────────────────────
    DOM 요소 레퍼런스
@@ -114,18 +115,18 @@ function createBuildings() {
 createBuildings();
 
 /* ───────────────────────────────
-   강아지 블록 (1x1x1 큐브 + 눈/코/귀/꼬리)
+   강아지 블록 (둥근 큐브 + 눈/코/귀/꼬리 + 다리)
    얼굴 = +Z 방향 (앞쪽)
    ─────────────────────────────── */
 const dogGroup = new THREE.Group();
 
-// 몸통 큐브
-const dogGeo = new THREE.BoxGeometry(1, 1, 1);
+// 몸통 – RoundedBoxGeometry로 부드럽게
+const dogGeo = new RoundedBoxGeometry(1, 1, 1, 4, 0.18);
 const dogMat = new THREE.MeshStandardMaterial({
-  color: 0xcccccc,
-  emissive: 0x444444,
-  emissiveIntensity: 0.3,
-  roughness: 0.7,
+  color: 0xdddddd,
+  emissive: 0x888888,
+  emissiveIntensity: 0.55,
+  roughness: 0.5,
   metalness: 0.1
 });
 const dogBody = new THREE.Mesh(dogGeo, dogMat);
@@ -133,62 +134,113 @@ dogBody.castShadow = true;
 dogGroup.add(dogBody);
 
 // 왼쪽 눈 (+Z 방향 = 얼굴 앞면)
-const eyeGeo = new THREE.BoxGeometry(0.12, 0.12, 0.06);
+const eyeGeo = new THREE.SphereGeometry(0.07, 8, 8);
 const eyeMat = new THREE.MeshStandardMaterial({
-  color: 0x000000,
+  color: 0x111111,
   emissive: 0x222222,
-  emissiveIntensity: 0.2
+  emissiveIntensity: 0.4,
+  roughness: 0.2
 });
 const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-leftEye.position.set(-0.2, 0.15, 0.5);
+leftEye.position.set(-0.2, 0.15, 0.49);
 dogGroup.add(leftEye);
 
 // 오른쪽 눈
 const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-rightEye.position.set(0.2, 0.15, 0.5);
+rightEye.position.set(0.2, 0.15, 0.49);
 dogGroup.add(rightEye);
 
+// 눈 반짝이 (하이라이트)
+const eyeShineGeo = new THREE.SphereGeometry(0.022, 6, 6);
+const eyeShineMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0 });
+const leftShine = new THREE.Mesh(eyeShineGeo, eyeShineMat);
+leftShine.position.set(-0.18, 0.175, 0.555);
+dogGroup.add(leftShine);
+const rightShine = new THREE.Mesh(eyeShineGeo, eyeShineMat);
+rightShine.position.set(0.22, 0.175, 0.555);
+dogGroup.add(rightShine);
+
 // 코
-const noseGeo = new THREE.BoxGeometry(0.15, 0.1, 0.08);
+const noseGeo = new THREE.SphereGeometry(0.085, 8, 8);
 const noseMat = new THREE.MeshStandardMaterial({
   color: 0x111111,
   emissive: 0x330000,
-  emissiveIntensity: 0.5
+  emissiveIntensity: 0.5,
+  roughness: 0.3
 });
 const nose = new THREE.Mesh(noseGeo, noseMat);
-nose.position.set(0, -0.05, 0.52);
+nose.position.set(0, -0.05, 0.51);
 dogGroup.add(nose);
 
-// 왼쪽 귀
-const earGeo = new THREE.BoxGeometry(0.2, 0.35, 0.15);
+// 왼쪽 귀 – RoundedBoxGeometry로 부드럽게
+const earGeo = new RoundedBoxGeometry(0.22, 0.38, 0.14, 3, 0.06);
 const earMat = new THREE.MeshStandardMaterial({
-  color: 0x999999,
-  roughness: 0.8
+  color: 0xbbbbbb,
+  emissive: 0x666666,
+  emissiveIntensity: 0.45,
+  roughness: 0.7
 });
 const leftEar = new THREE.Mesh(earGeo, earMat);
-leftEar.position.set(-0.35, 0.6, 0.1);
-leftEar.rotation.z = 0.25;
+leftEar.position.set(-0.38, 0.62, 0.08);
+leftEar.rotation.z = 0.28;
 dogGroup.add(leftEar);
 
 // 오른쪽 귀
 const rightEar = new THREE.Mesh(earGeo, earMat);
-rightEar.position.set(0.35, 0.6, 0.1);
-rightEar.rotation.z = -0.25;
+rightEar.position.set(0.38, 0.62, 0.08);
+rightEar.rotation.z = -0.28;
 dogGroup.add(rightEar);
 
-// 꼬리 (-Z 방향 = 뒤쪽)
-const tailGeo = new THREE.BoxGeometry(0.12, 0.12, 0.4);
+// 꼬리 (-Z 방향 = 뒤쪽) – 캡슐형으로
+const tailGeo = new THREE.CapsuleGeometry(0.06, 0.28, 4, 8);
 const tailMat = new THREE.MeshStandardMaterial({
-  color: 0xbbbbbb,
-  roughness: 0.7
+  color: 0xcccccc,
+  emissive: 0x666666,
+  emissiveIntensity: 0.45,
+  roughness: 0.6
 });
 const tail = new THREE.Mesh(tailGeo, tailMat);
-tail.position.set(0, 0.3, -0.6);
+tail.position.set(0, 0.25, -0.58);
 tail.rotation.x = 0.5;
 dogGroup.add(tail);
 
+/* ───────────────────────────────
+   초소형 다리 4개 (CapsuleGeometry)
+   몸통 크기(1) 기준 0.1 비율 → 반지름 0.055, 높이 0.18
+   ─────────────────────────────── */
+const legMat = new THREE.MeshStandardMaterial({
+  color: 0xcccccc,
+  emissive: 0x666666,
+  emissiveIntensity: 0.45,
+  roughness: 0.6
+});
+
+function createLeg(xOffset, zOffset) {
+  const legGeo = new THREE.CapsuleGeometry(0.055, 0.14, 4, 8);
+  const leg = new THREE.Mesh(legGeo, legMat);
+  // 몸통 중심(0) 기준 -0.58 → 아랫부분이 몸통 밖으로 완전히 노출
+  // 캡슐 총 높이 = 0.14(body) + 0.055*2(반구 x2) = 0.25
+  // 몸통 하단 = -0.5 이므로 중심은 -0.5 - 0.125 = -0.625, 살짝 파묻혀 귀엽게
+  leg.position.set(xOffset, -0.58, zOffset);
+  leg.castShadow = true;
+  dogGroup.add(leg);
+  return leg;
+}
+
+// 앞다리 (z 양수 = 얼굴쪽), 뒷다리 (z 음수 = 꼬리쪽)
+const legFL = createLeg(-0.28,  0.28); // 왼쪽 앞
+const legFR = createLeg( 0.28,  0.28); // 오른쪽 앞
+const legBL = createLeg(-0.28, -0.28); // 왼쪽 뒤
+const legBR = createLeg( 0.28, -0.28); // 오른쪽 뒤
+
+// 걷기 애니메이션 타이머
+let walkCycle = 0;
+
 // 강아지 위치 초기화
-dogGroup.position.set(0, 0.5, 4);
+// 다리 하단이 지면(y=0)에 딱 닿도록:
+// 다리 중심 -0.58, 캡슐 반구 0.055 → 다리 최하단 = -0.58 - 0.125 = -0.705
+// 그룹 Y = 0.705 로 올리면 다리 바닥이 y=0에 닿음
+dogGroup.position.set(0, 0.72, 4);
 scene.add(dogGroup);
 
 /* ───────────────────────────────
@@ -646,10 +698,34 @@ function animate() {
     }
   }
 
-  dogGroup.position.y = 0.5;
+  dogGroup.position.y = 0.72;
 
   /* ─── 꼬리 흔들기 ─── */
   tail.rotation.y = Math.sin(elapsed * 6) * 0.4;
+
+  /* ─── 다리 걷기 애니메이션 ─── */
+  const isMoving = isPointerLocked && (
+    moveState.forward || moveState.backward ||
+    moveState.left    || moveState.right
+  );
+
+  if (isMoving) {
+    // 이동 중: 빠른 총총걸음 (8Hz)
+    walkCycle += delta * 8;
+    const swing  = 0.55; // 최대 회전 각도(rad)
+    // 대각선 대칭 패턴 (FL↔BR, FR↔BL)
+    legFL.rotation.x =  Math.sin(walkCycle)          * swing;
+    legBR.rotation.x =  Math.sin(walkCycle)          * swing;
+    legFR.rotation.x =  Math.sin(walkCycle + Math.PI) * swing;
+    legBL.rotation.x =  Math.sin(walkCycle + Math.PI) * swing;
+  } else {
+    // 대기 중: 다리가 원위치(0)로 부드럽게 복귀
+    const returnSpeed = 1 - Math.pow(0.05, delta); // 지수 보간
+    legFL.rotation.x *= (1 - returnSpeed);
+    legFR.rotation.x *= (1 - returnSpeed);
+    legBL.rotation.x *= (1 - returnSpeed);
+    legBR.rotation.x *= (1 - returnSpeed);
+  }
 
   /* ─── 3인칭 숄더뷰 카메라 ─── */
   const idealOffset = new THREE.Vector3(
