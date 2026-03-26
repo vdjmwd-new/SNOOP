@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 /* ───────────────────────────────
    DOM 요소 레퍼런스
@@ -115,137 +114,320 @@ function createBuildings() {
 createBuildings();
 
 /* ───────────────────────────────
-   강아지 블록 (둥근 큐브 + 눈/코/귀/꼬리 + 다리)
+   강아지 (포메라니안 찐빵 체형)
    얼굴 = +Z 방향 (앞쪽)
    ─────────────────────────────── */
 const dogGroup = new THREE.Group();
 
-// 몸통 – RoundedBoxGeometry로 부드럽게
-const dogGeo = new RoundedBoxGeometry(1, 1, 1, 4, 0.18);
-const dogMat = new THREE.MeshStandardMaterial({
-  color: 0xdddddd,
-  emissive: 0x888888,
-  emissiveIntensity: 0.55,
-  roughness: 0.5,
+// ── 공통 머티리얼 정의 ──
+const furMainMat = new THREE.MeshStandardMaterial({
+  color: 0xF5DEB3,   // 밝은 크림/wheat
+  roughness: 0.85,
+  metalness: 0.0
+});
+const furDarkMat = new THREE.MeshStandardMaterial({
+  color: 0xD2B48C,   // 연한 갈색 tan
+  roughness: 0.85,
+  metalness: 0.0
+});
+const eyeMat = new THREE.MeshStandardMaterial({
+  color: 0x000000,
+  roughness: 0.1,
+  metalness: 0.15
+});
+const noseMat = new THREE.MeshStandardMaterial({
+  color: 0x000000,
+  roughness: 0.15,
   metalness: 0.1
 });
-const dogBody = new THREE.Mesh(dogGeo, dogMat);
+const tongueMat = new THREE.MeshStandardMaterial({
+  color: 0xFF69B4,   // hot pink
+  roughness: 0.6,
+  metalness: 0.0,
+  side: THREE.DoubleSide
+});
+
+// ══════════════════════════════
+//  몸통 — Y축 그라데이션 ShaderMaterial
+// ══════════════════════════════
+const bodyGradMat = new THREE.ShaderMaterial({
+  uniforms: {
+    colorTop:    { value: new THREE.Color(0xD2B48C) }, // 갈색 (등)
+    colorBottom: { value: new THREE.Color(0xFFFDD0) }, // 크림 (배/가슴)
+  },
+  vertexShader: `
+    varying float vY;
+    void main() {
+      // 로컬 Y를 그대로 전달 (scale로 눌렸어도 법선 기반보다 Y가 직관적)
+      vY = position.y;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 colorTop;
+    uniform vec3 colorBottom;
+    varying float vY;
+    void main() {
+      // body radius=0.55, t=0(하단)~1(상단)
+      float t = clamp(vY / 0.55 * 0.5 + 0.5, 0.0, 1.0);
+      gl_FragColor = vec4(mix(colorBottom, colorTop, t), 1.0);
+    }
+  `
+});
+
+const bodyGeo = new THREE.SphereGeometry(0.55, 24, 18);
+const dogBody = new THREE.Mesh(bodyGeo, bodyGradMat);
+dogBody.scale.set(1.22, 0.82, 1.30);
+dogBody.position.set(0, 0, 0);
 dogBody.castShadow = true;
 dogGroup.add(dogBody);
 
-// 왼쪽 눈 (+Z 방향 = 얼굴 앞면)
-const eyeGeo = new THREE.SphereGeometry(0.07, 8, 8);
-const eyeMat = new THREE.MeshStandardMaterial({
-  color: 0x111111,
-  emissive: 0x222222,
-  emissiveIntensity: 0.4,
-  roughness: 0.2
+// ══════════════════════════════
+//  머리 — 목 없이 몸통 앞 상단에 밀착
+// ══════════════════════════════
+const headGroup = new THREE.Group();
+
+// 머리도 동일 그라데이션 셰이더 (가슴-얼굴 색상 자연스럽게 이어지도록)
+const headGradMat = new THREE.ShaderMaterial({
+  uniforms: {
+    colorTop:    { value: new THREE.Color(0xD2B48C) },
+    colorBottom: { value: new THREE.Color(0xFFFDD0) },
+  },
+  vertexShader: `
+    varying float vY;
+    void main() {
+      vY = position.y;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 colorTop;
+    uniform vec3 colorBottom;
+    varying float vY;
+    void main() {
+      float t = clamp(vY / 0.42 * 0.5 + 0.5, 0.0, 1.0);
+      gl_FragColor = vec4(mix(colorBottom, colorTop, t), 1.0);
+    }
+  `
 });
+
+const headGeo = new THREE.SphereGeometry(0.42, 20, 16);
+const head = new THREE.Mesh(headGeo, headGradMat);
+head.scale.set(1.05, 1.0, 1.0);
+head.castShadow = true;
+headGroup.add(head);
+
+// ── 귀 — CapsuleGeometry 뾰족한 개 귀 / 정면 가시성 극대화 ──
+const earGeo = new THREE.CapsuleGeometry(0.085, 0.26, 6, 10);
+const leftEar = new THREE.Mesh(earGeo, furDarkMat);
+// 납작하게 + 정면을 향하도록 회전, X간격 중앙으로 좌힘
+leftEar.scale.set(0.60, 1.0, 0.45);
+leftEar.position.set(-0.26, 0.44, 0.06);  // 주둥이에 가깝게, 앞쪽으로
+leftEar.rotation.z =  0.18;   // 가이 약하게 바깥
+leftEar.rotation.y =  0.10;   // 정면에서 잘 보이도록 앞으로
+leftEar.rotation.x = -0.05;
+headGroup.add(leftEar);
+
+const rightEar = new THREE.Mesh(earGeo, furDarkMat);
+rightEar.scale.set(0.60, 1.0, 0.45);
+rightEar.position.set( 0.26, 0.44, 0.06);
+rightEar.rotation.z = -0.18;
+rightEar.rotation.y = -0.10;
+rightEar.rotation.x = -0.05;
+headGroup.add(rightEar);
+
+// ── 눈 ──
+const eyeGeo = new THREE.SphereGeometry(0.075, 14, 12);
 const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
-leftEye.position.set(-0.2, 0.15, 0.49);
-dogGroup.add(leftEye);
+leftEye.position.set(-0.18, 0.08, 0.36);
+headGroup.add(leftEye);
 
-// 오른쪽 눈
 const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
-rightEye.position.set(0.2, 0.15, 0.49);
-dogGroup.add(rightEye);
+rightEye.position.set( 0.18, 0.08, 0.36);
+headGroup.add(rightEye);
 
-// 눈 반짝이 (하이라이트)
-const eyeShineGeo = new THREE.SphereGeometry(0.022, 6, 6);
+// 눈 하이라이트
+const eyeShineGeo = new THREE.SphereGeometry(0.022, 8, 8);
 const eyeShineMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0 });
-const leftShine = new THREE.Mesh(eyeShineGeo, eyeShineMat);
-leftShine.position.set(-0.18, 0.175, 0.555);
-dogGroup.add(leftShine);
+const leftShine  = new THREE.Mesh(eyeShineGeo, eyeShineMat);
+leftShine.position.set(-0.165, 0.10, 0.43);
+headGroup.add(leftShine);
 const rightShine = new THREE.Mesh(eyeShineGeo, eyeShineMat);
-rightShine.position.set(0.22, 0.175, 0.555);
-dogGroup.add(rightShine);
+rightShine.position.set( 0.195, 0.10, 0.43);
+headGroup.add(rightShine);
 
-// 코
-const noseGeo = new THREE.SphereGeometry(0.085, 8, 8);
-const noseMat = new THREE.MeshStandardMaterial({
-  color: 0x111111,
-  emissive: 0x330000,
-  emissiveIntensity: 0.5,
-  roughness: 0.3
-});
+// ── 주둥이 (납작한 원기둥 + 코) ──
+const snoutGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.10, 16);
+const snoutMat = new THREE.MeshStandardMaterial({ color: 0xF0D0A0, roughness: 0.8 });
+const snout = new THREE.Mesh(snoutGeo, snoutMat);
+snout.rotation.x = Math.PI / 2;
+snout.position.set(0, -0.07, 0.40);
+headGroup.add(snout);
+
+const noseGeo = new THREE.SphereGeometry(0.065, 12, 10);
 const nose = new THREE.Mesh(noseGeo, noseMat);
-nose.position.set(0, -0.05, 0.51);
-dogGroup.add(nose);
+nose.scale.set(1.2, 0.75, 0.9);
+nose.position.set(0, -0.05, 0.48);
+headGroup.add(nose);
 
-// 왼쪽 귀 – RoundedBoxGeometry로 부드럽게
-const earGeo = new RoundedBoxGeometry(0.22, 0.38, 0.14, 3, 0.06);
-const earMat = new THREE.MeshStandardMaterial({
-  color: 0xbbbbbb,
-  emissive: 0x666666,
-  emissiveIntensity: 0.45,
-  roughness: 0.7
+// ── 혀 (분홍 납작 반구 — 주둥이 아래로 쏙) ──
+const tongueGeo = new THREE.SphereGeometry(0.075, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.6);
+const tongue = new THREE.Mesh(tongueGeo, tongueMat);
+tongue.rotation.x = Math.PI * 0.6;
+tongue.position.set(0, -0.14, 0.42);
+headGroup.add(tongue);
+
+// 머리를 몸통 앞 상단에 밀착 배치 (목 없음)
+headGroup.position.set(0, 0.46, 0.30);
+headGroup.rotation.x = -0.12;  // 약간 앞으로 숙인 느낌
+dogGroup.add(headGroup);
+
+// ══════════════════════════════
+//  꼬리 — 위로 동그랗게 말린 털북숭이
+// ══════════════════════════════
+const tailGroup = new THREE.Group();
+tailGroup.position.set(0, 0.18, -0.62);
+dogGroup.add(tailGroup);
+
+const tailFurMat = new THREE.MeshStandardMaterial({ color: 0xD2B48C, roughness: 0.9, metalness: 0.0 });
+
+// 꼬리 기둥 구들 — 위로 말리는 호(arc) 형태로 배열
+const tailCurve = [
+  { r: 0.12, x: 0,     y: 0.00, z: 0.00 },
+  { r: 0.115,x:-0.04,  y: 0.12, z: 0.04 },
+  { r: 0.11, x:-0.07,  y: 0.22, z: 0.10 },
+  { r: 0.10, x:-0.05,  y: 0.30, z: 0.16 },
+  { r: 0.09, x: 0.00,  y: 0.34, z: 0.18 },
+  { r: 0.085,x: 0.05,  y: 0.32, z: 0.14 },
+  { r: 0.08, x: 0.07,  y: 0.26, z: 0.08 },
+];
+tailCurve.forEach(t => {
+  const tg = new THREE.SphereGeometry(t.r, 10, 8);
+  const tm = new THREE.Mesh(tg, tailFurMat);
+  tm.position.set(t.x, t.y, t.z);
+  tm.castShadow = true;
+  tailGroup.add(tm);
 });
-const leftEar = new THREE.Mesh(earGeo, earMat);
-leftEar.position.set(-0.38, 0.62, 0.08);
-leftEar.rotation.z = 0.28;
-dogGroup.add(leftEar);
 
-// 오른쪽 귀
-const rightEar = new THREE.Mesh(earGeo, earMat);
-rightEar.position.set(0.38, 0.62, 0.08);
-rightEar.rotation.z = -0.28;
-dogGroup.add(rightEar);
+// 꼬리 끝 토러스 (말린 느낌 보강)
+const tailRingGeo = new THREE.TorusGeometry(0.09, 0.055, 8, 18, Math.PI * 1.3);
+const tailRing = new THREE.Mesh(tailRingGeo, tailFurMat);
+tailRing.position.set(0.04, 0.35, 0.13);
+tailRing.rotation.z = -Math.PI * 0.4;
+tailRing.rotation.x = Math.PI * 0.3;
+tailGroup.add(tailRing);
 
-// 꼬리 (-Z 방향 = 뒤쪽) – 캡슐형으로
-const tailGeo = new THREE.CapsuleGeometry(0.06, 0.28, 4, 8);
-const tailMat = new THREE.MeshStandardMaterial({
-  color: 0xcccccc,
-  emissive: 0x666666,
-  emissiveIntensity: 0.45,
-  roughness: 0.6
-});
-const tail = new THREE.Mesh(tailGeo, tailMat);
-tail.position.set(0, 0.25, -0.58);
-tail.rotation.x = 0.5;
-dogGroup.add(tail);
-
-/* ───────────────────────────────
-   초소형 다리 4개 (CapsuleGeometry)
-   몸통 크기(1) 기준 0.1 비율 → 반지름 0.055, 높이 0.18
-   ─────────────────────────────── */
+// ══════════════════════════════
+//  다리 4개 — 짧고 앙증맞게 몸통 안쪽
+// ══════════════════════════════
 const legMat = new THREE.MeshStandardMaterial({
-  color: 0xcccccc,
-  emissive: 0x666666,
-  emissiveIntensity: 0.45,
-  roughness: 0.6
+  color: 0xC8A878,
+  roughness: 0.85,
+  metalness: 0.0
 });
 
 function createLeg(xOffset, zOffset) {
-  const legGeo = new THREE.CapsuleGeometry(0.055, 0.14, 4, 8);
+  const legGeo = new THREE.CapsuleGeometry(0.072, 0.16, 6, 10);
   const leg = new THREE.Mesh(legGeo, legMat);
-  // 몸통 중심(0) 기준 -0.58 → 아랫부분이 몸통 밖으로 완전히 노출
-  // 캡슐 총 높이 = 0.14(body) + 0.055*2(반구 x2) = 0.25
-  // 몸통 하단 = -0.5 이므로 중심은 -0.5 - 0.125 = -0.625, 살짝 파묻혀 귀엽게
-  leg.position.set(xOffset, -0.58, zOffset);
+  // 몸통을 Y=0.82 스케일로 눌렀으므로 다리는 몸통 바닥(~-0.45) 바로 아래
+  leg.position.set(xOffset, -0.38, zOffset);
   leg.castShadow = true;
   dogGroup.add(leg);
   return leg;
 }
 
-// 앞다리 (z 양수 = 얼굴쪽), 뒷다리 (z 음수 = 꼬리쪽)
-const legFL = createLeg(-0.28,  0.28); // 왼쪽 앞
-const legFR = createLeg( 0.28,  0.28); // 오른쪽 앞
-const legBL = createLeg(-0.28, -0.28); // 왼쪽 뒤
-const legBR = createLeg( 0.28, -0.28); // 오른쪽 뒤
+// 찐빵 몸통 폭에 맞춰 다리 간격 조정
+const legFL = createLeg(-0.32,  0.30);
+const legFR = createLeg( 0.32,  0.30);
+const legBL = createLeg(-0.32, -0.28);
+const legBR = createLeg( 0.32, -0.28);
+
+// ══════════════════════════════
+//  탐정 모자 (디어스토커) — 갈색 반구 + 챙
+// ══════════════════════════════
+const hatGroup = new THREE.Group();
+const hatMat = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.8, metalness: 0.0 });
+
+// 돔 (반구형 상단)
+const hatDomeGeo = new THREE.SphereGeometry(0.36, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.52);
+const hatDome = new THREE.Mesh(hatDomeGeo, hatMat);
+hatDome.scale.set(1.0, 1.15, 0.90);
+hatDome.castShadow = true;
+hatGroup.add(hatDome);
+
+// 챙 앞
+const brimFGeo = new THREE.CylinderGeometry(0.30, 0.30, 0.04, 20);
+const brimFront = new THREE.Mesh(brimFGeo, hatMat);
+brimFront.position.set(0, -0.04, 0.20);
+brimFront.rotation.x =  0.35;
+brimFront.scale.set(0.90, 1.0, 0.52);
+hatGroup.add(brimFront);
+
+// 챙 뒤
+const brimBGeo = new THREE.CylinderGeometry(0.28, 0.28, 0.04, 20);
+const brimBack = new THREE.Mesh(brimBGeo, hatMat);
+brimBack.position.set(0, -0.04, -0.20);
+brimBack.rotation.x = -0.35;
+brimBack.scale.set(0.90, 1.0, 0.52);
+hatGroup.add(brimBack);
+
+// 밴드 (테두리 어두운 띠)
+const hatBandGeo = new THREE.TorusGeometry(0.32, 0.030, 8, 32);
+const hatBandMat = new THREE.MeshStandardMaterial({ color: 0x3B1A00, roughness: 0.7 });
+const hatBand = new THREE.Mesh(hatBandGeo, hatBandMat);
+hatBand.scale.set(1.0, 1.0, 0.90);
+hatBand.position.set(0, -0.01, 0);
+hatGroup.add(hatBand);
+
+// 뼈다귀 텍스처 패치 (Canvas)
+const bCv = document.createElement('canvas');
+bCv.width = 128; bCv.height = 64;
+const bCx = bCv.getContext('2d');
+bCx.fillStyle = '#8B4513'; bCx.fillRect(0, 0, 128, 64);
+bCx.fillStyle = 'rgba(255,255,255,0.88)';
+function drawBone(cx, cy, s) {
+  [[-s, 0], [s, 0]].forEach(([dx]) => {
+    bCx.beginPath(); bCx.arc(cx + dx, cy, s * 0.55, 0, Math.PI * 2); bCx.fill();
+    bCx.beginPath(); bCx.arc(cx + dx, cy - s * 0.3, s * 0.38, 0, Math.PI * 2); bCx.fill();
+    bCx.beginPath(); bCx.arc(cx + dx, cy + s * 0.3, s * 0.38, 0, Math.PI * 2); bCx.fill();
+  });
+  bCx.fillRect(cx - s, cy - s * 0.18, s * 2, s * 0.36);
+}
+drawBone(64, 32, 7);
+const boneTex = new THREE.CanvasTexture(bCv);
+const bPatch = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.26, 0.13),
+  new THREE.MeshStandardMaterial({ map: boneTex, transparent: true,
+    polygonOffset: true, polygonOffsetFactor: -1 })
+);
+bPatch.position.set(0, 0.08, 0.33);
+hatGroup.add(bPatch);
+
+// ── 모자 전체 축소 후 두 귀 사이 머리 위에 안착 ──
+hatGroup.scale.set(0.65, 0.65, 0.65);
+hatGroup.position.set(0, 0.42, -0.01);
+hatGroup.rotation.x =  0.10;
+hatGroup.rotation.z = -0.05;
+headGroup.add(hatGroup);
 
 // 걷기 애니메이션 타이머
 let walkCycle = 0;
 
-// 강아지 위치 초기화
-// 다리 하단이 지면(y=0)에 딱 닿도록:
-// 다리 중심 -0.58, 캡슐 반구 0.055 → 다리 최하단 = -0.58 - 0.125 = -0.705
-// 그룹 Y = 0.705 로 올리면 다리 바닥이 y=0에 닿음
-dogGroup.position.set(0, 0.72, 4);
+// ─── 강아지 그룹 지면 배치 ───
+// 다리 중심 -0.38, 캡슐 반구 ≈ 0.19 → 최하단 ≈ -0.57
+// 그룹 Y = 0.60 으로 올리면 다리 바닥이 y≈0 에 닿음
+dogGroup.position.set(0, 0.60, 4);
 scene.add(dogGroup);
+
+
+
+
 
 /* ───────────────────────────────
    조명 (낮/밤 전환)
    ─────────────────────────────── */
+
+// ── 공통 조명 ──
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.12);
 scene.add(ambientLight);
 
@@ -253,6 +435,7 @@ const hemiLight = new THREE.HemisphereLight(0x8888cc, 0x333333, 0.25);
 hemiLight.position.set(0, 30, 0);
 scene.add(hemiLight);
 
+// ── 야간 손전등 (SpotLight) ──
 const spotLight = new THREE.SpotLight(0xffeedd, 3, 50, Math.PI / 5, 0.5, 1.5);
 spotLight.castShadow = true;
 spotLight.shadow.mapSize.width = 1024;
@@ -260,6 +443,26 @@ spotLight.shadow.mapSize.height = 1024;
 scene.add(spotLight);
 scene.add(spotLight.target);
 
+// ── 낮 태양광 (DirectionalLight) ──
+const sunLight = new THREE.DirectionalLight(0xFFFACD, 2.2);
+sunLight.position.set(30, 60, 20);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.width = 1024;
+sunLight.shadow.mapSize.height = 1024;
+sunLight.shadow.camera.near = 0.5;
+sunLight.shadow.camera.far = 200;
+sunLight.shadow.camera.left = -60;
+sunLight.shadow.camera.right = 60;
+sunLight.shadow.camera.top = 60;
+sunLight.shadow.camera.bottom = -60;
+scene.add(sunLight);
+
+// ── 밤 달빛 (DirectionalLight) ──
+const moonLight = new THREE.DirectionalLight(0x4169E1, 0.45);
+moonLight.position.set(-20, 50, -10);
+scene.add(moonLight);
+
+// 가로등
 const streetLamps = [
   { x: -3, z: -10 },
   { x: 3, z: -20 },
@@ -289,23 +492,187 @@ streetLamps.forEach(pos => {
   scene.add(bulb);
 });
 
+/* ───────────────────────────────
+   하늘 요소 (정적 Canvas 텍스처 기반)
+   ─────────────────────────────── */
+
+// ── 헬퍼: Canvas 텍스처 생성 ──
+function makeCanvasTex(w, h, drawFn) {
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  drawFn(cv.getContext('2d'), w, h);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.needsUpdate = false; // 정적 — 업데이트 불필요
+  return tex;
+}
+
+// ── 낮 하늘 돔 텍스처 (#87CEEB 그라데이션) ──
+const daySkyCv = makeCanvasTex(512, 512, (ctx, w, h) => {
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0.0, '#2a6fa8');
+  g.addColorStop(0.5, '#87CEEB');
+  g.addColorStop(1.0, '#c9e8f5');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+});
+
+// ── 밤 하늘 돔 텍스처 (남색↔보라 그라데이션) ──
+const nightSkyCv = makeCanvasTex(512, 512, (ctx, w, h) => {
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0.0, '#000033');
+  g.addColorStop(0.4, '#000080');
+  g.addColorStop(0.8, '#1a0050');
+  g.addColorStop(1.0, '#120030');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+});
+
+// ── 하늘 돔 메시 (안쪽 면 렌더링) ──
+const skyDomeGeo = new THREE.SphereGeometry(400, 32, 16);
+const skyDomeMat = new THREE.MeshBasicMaterial({
+  map: nightSkyCv,
+  side: THREE.BackSide,
+  depthWrite: false
+});
+const skyDome = new THREE.Mesh(skyDomeGeo, skyDomeMat);
+scene.add(skyDome);
+
+// ── 달 텍스처 + 메시 ──
+const moonTex = makeCanvasTex(256, 256, (ctx, w, h) => {
+  // 달 배경 (투명)
+  ctx.clearRect(0, 0, w, h);
+  // 달 원
+  const grd = ctx.createRadialGradient(w*0.45, h*0.42, w*0.02, w*0.5, h*0.5, w*0.46);
+  grd.addColorStop(0.0, '#fffff0');
+  grd.addColorStop(0.6, '#f0e8c0');
+  grd.addColorStop(1.0, '#c8b860');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(w/2, h/2, w*0.44, 0, Math.PI*2);
+  ctx.fill();
+  // 달 표면 크레이터
+  ctx.fillStyle = 'rgba(180,160,80,0.25)';
+  [[0.35,0.40,0.07],[0.60,0.55,0.05],[0.45,0.65,0.04]].forEach(([cx,cy,r]) => {
+    ctx.beginPath(); ctx.arc(w*cx, h*cy, w*r, 0, Math.PI*2); ctx.fill();
+  });
+});
+const moonGeo = new THREE.PlaneGeometry(22, 22);
+const moonMat = new THREE.MeshBasicMaterial({
+  map: moonTex, transparent: true, depthWrite: false, side: THREE.DoubleSide
+});
+const moonMesh = new THREE.Mesh(moonGeo, moonMat);
+moonMesh.position.set(120, 160, -300);
+moonMesh.lookAt(0, 0, 0);
+scene.add(moonMesh);
+
+// ── 별 텍스처 + 메시 (정적 스프라이트 시트) ──
+const starsTex = makeCanvasTex(1024, 1024, (ctx, w, h) => {
+  ctx.fillStyle = 'transparent';
+  ctx.clearRect(0, 0, w, h);
+  const rng = (n) => Math.floor(Math.random() * n);
+  for (let i = 0; i < 320; i++) {
+    const x = rng(w), y = rng(h);
+    const r = Math.random() * 1.8 + 0.4;
+    const bright = Math.floor(Math.random() * 55 + 200);
+    ctx.fillStyle = `rgba(${bright},${bright},${Math.min(255,bright+30)},${0.6 + Math.random()*0.4})`;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
+  }
+});
+const starsGeo = new THREE.SphereGeometry(380, 32, 16);
+const starsMat = new THREE.MeshBasicMaterial({
+  map: starsTex, side: THREE.BackSide, transparent: true, depthWrite: false
+});
+const starsMesh = new THREE.Mesh(starsGeo, starsMat);
+scene.add(starsMesh);
+
+// ── 구름 텍스처 생성 헬퍼 ──
+function makeCloudTex() {
+  return makeCanvasTex(256, 128, (ctx, w, h) => {
+    ctx.clearRect(0, 0, w, h);
+    const puffs = [[w*0.25, h*0.55, 36],[w*0.45, h*0.40, 48],[w*0.65, h*0.50, 38],[w*0.80, h*0.58, 28]];
+    puffs.forEach(([cx,cy,r]) => {
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      g.addColorStop(0.0, 'rgba(255,255,255,0.92)');
+      g.addColorStop(0.6, 'rgba(240,245,255,0.60)');
+      g.addColorStop(1.0, 'rgba(220,230,255,0.00)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
+    });
+  });
+}
+
+// ── 낮 구름 Billboard 배치 ──
+const cloudPositions = [
+  [-60, 90, -180], [40, 80, -200], [-20, 110, -150],
+  [80, 95, -170], [-100, 85, -130]
+];
+const cloudMeshes = cloudPositions.map(([x,y,z]) => {
+  const geo = new THREE.PlaneGeometry(60, 28);
+  const mat = new THREE.MeshBasicMaterial({
+    map: makeCloudTex(), transparent: true, depthWrite: false, side: THREE.DoubleSide
+  });
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  m.lookAt(0, y, 0);
+  scene.add(m);
+  return m;
+});
+
+/* ───────────────────────────────
+   낮/밤 전환
+   ─────────────────────────────── */
 let timeOfDay = 'night';
 
 function applyLighting() {
   if (timeOfDay === 'day') {
-    ambientLight.intensity = 0.7;
-    hemiLight.intensity = 0.8;
+    // 하늘 돔 — 낮
+    skyDomeMat.map = daySkyCv;
+    skyDomeMat.needsUpdate = true;
+    scene.background = null;           // 돔이 배경 담당
+    scene.fog = new THREE.FogExp2(0xc9e8f5, 0.008);
+
+    // 조명
+    ambientLight.color.set(0xfff5e0);
+    ambientLight.intensity = 0.9;
+    hemiLight.color.set(0x87CEEB);
+    hemiLight.groundColor.set(0x8B7355);
+    hemiLight.intensity = 1.0;
+    sunLight.intensity = 2.2;
+    moonLight.intensity = 0.0;
     spotLight.intensity = 0.0;
-    scene.background.set(0x888888);
-    scene.fog = new THREE.FogExp2(0x888888, 0.015);
-    groundMat.color.set(0x999999);
+
+    // 지면 색
+    groundMat.color.set(0x888870);
+
+    // 하늘 요소 가시성
+    moonMesh.visible = false;
+    starsMesh.visible = false;
+    cloudMeshes.forEach(c => { c.visible = true; });
+
   } else {
-    ambientLight.intensity = 0.12;
-    hemiLight.intensity = 0.25;
-    spotLight.intensity = 3.0;
-    scene.background.set(0x080808);
-    scene.fog = new THREE.FogExp2(0x050505, 0.025);
+    // 하늘 돔 — 밤
+    skyDomeMat.map = nightSkyCv;
+    skyDomeMat.needsUpdate = true;
+    scene.background = null;
+    scene.fog = new THREE.FogExp2(0x05050f, 0.022);
+
+    // 조명
+    ambientLight.color.set(0x4169E1);
+    ambientLight.intensity = 0.22;
+    hemiLight.color.set(0x223355);
+    hemiLight.groundColor.set(0x111122);
+    hemiLight.intensity = 0.28;
+    sunLight.intensity = 0.0;
+    moonLight.intensity = 0.45;
+    spotLight.intensity = 2.8;
+
+    // 지면 색
     groundMat.color.set(0x1a1a1a);
+
+    // 하늘 요소 가시성
+    moonMesh.visible = true;
+    starsMesh.visible = true;
+    cloudMeshes.forEach(c => { c.visible = false; });
   }
 }
 
@@ -480,6 +847,7 @@ function updateParticles(delta) {
 const smellMarkers = [];
 const smellGoal = new THREE.Vector3(0, 0.1, -26);
 const SMELL_COLLECT_DIST = 1.8; // 강아지가 이 거리 안에 들어오면 냄새 수집
+const SMELL_COLLECT_DIST_SQ = SMELL_COLLECT_DIST * SMELL_COLLECT_DIST; // distanceToSquared용 제곱값
 
 // 냄새 종류 데이터
 const smellTypes = [
@@ -537,26 +905,33 @@ createSmellPath();
 
 // 냄새 수집 로직
 function checkSmellCollection() {
-  smellMarkers.forEach((marker) => {
-    if (marker.userData.collected) return;
-    const dist = dogGroup.position.distanceTo(marker.position);
-    if (dist < SMELL_COLLECT_DIST) {
-      marker.userData.collected = true;
+  // 뒤에서 앞으로 순회해야 splice 시 인덱스 오류 없음
+  for (let i = smellMarkers.length - 1; i >= 0; i--) {
+    const marker = smellMarkers[i];
+
+    // [최적화 1] distanceToSquared — sqrt 연산 없이 가벼운 거리 비교
+    const distSq = dogGroup.position.distanceToSquared(marker.position);
+    if (distSq < SMELL_COLLECT_DIST_SQ) {
       collectedSmellCount++;
 
       // 파티클 폭발 생성
       spawnSmellBurst(marker.position.clone(), marker.userData.color);
 
-      // 마커 즉시 제거
+      // [최적화 2] geometry & material 메모리 완전 해제 후 씬에서 제거
       scene.remove(marker);
+      marker.geometry.dispose();
+      marker.material.dispose();
       if (marker.userData.light) scene.remove(marker.userData.light);
 
-      // 수첩에 냄새 기록 추가
+      // [최적화 3] 배열에서 즉시 제거 → 다음 프레임부터 충돌 검사 대상에서 완전 제외
+      smellMarkers.splice(i, 1);
+
+      // 수첩에 냄새 기록 추가 (smellType/color는 이미 지역 변수로 캡처)
       addSmellToNotebook(marker.userData.smellType, marker.userData.color);
 
-      // 시퀀스 상태 업데이트
+      // [최적화 4] UI 업데이트를 requestAnimationFrame 바깥에서 처리해 렌더 루프 부담 최소화
       if (sequenceStatus) {
-        const remaining = smellMarkers.filter(m => !m.userData.collected).length;
+        const remaining = smellMarkers.length; // splice 후 남은 길이 = 미수집 수
         if (remaining > 0) {
           sequenceStatus.textContent = `냄새 수집 중... (${collectedSmellCount}개 수집, ${remaining}개 남음)`;
         } else {
@@ -564,7 +939,7 @@ function checkSmellCollection() {
         }
       }
     }
-  });
+  }
 }
 
 /* ───────────────────────────────
@@ -698,10 +1073,11 @@ function animate() {
     }
   }
 
-  dogGroup.position.y = 0.72;
+  dogGroup.position.y = 0.60;
 
-  /* ─── 꼬리 흔들기 ─── */
-  tail.rotation.y = Math.sin(elapsed * 6) * 0.4;
+  /* ─── 꼬리 흔들기 (살랑살랑) ─── */
+  tailGroup.rotation.y = Math.sin(elapsed * 5.5) * 0.45;
+  tailGroup.rotation.z = Math.sin(elapsed * 4.0) * 0.15;
 
   /* ─── 다리 걷기 애니메이션 ─── */
   const isMoving = isPointerLocked && (
@@ -710,17 +1086,14 @@ function animate() {
   );
 
   if (isMoving) {
-    // 이동 중: 빠른 총총걸음 (8Hz)
     walkCycle += delta * 8;
-    const swing  = 0.55; // 최대 회전 각도(rad)
-    // 대각선 대칭 패턴 (FL↔BR, FR↔BL)
-    legFL.rotation.x =  Math.sin(walkCycle)          * swing;
-    legBR.rotation.x =  Math.sin(walkCycle)          * swing;
+    const swing = 0.55;
+    legFL.rotation.x =  Math.sin(walkCycle)           * swing;
+    legBR.rotation.x =  Math.sin(walkCycle)           * swing;
     legFR.rotation.x =  Math.sin(walkCycle + Math.PI) * swing;
     legBL.rotation.x =  Math.sin(walkCycle + Math.PI) * swing;
   } else {
-    // 대기 중: 다리가 원위치(0)로 부드럽게 복귀
-    const returnSpeed = 1 - Math.pow(0.05, delta); // 지수 보간
+    const returnSpeed = 1 - Math.pow(0.05, delta);
     legFL.rotation.x *= (1 - returnSpeed);
     legFR.rotation.x *= (1 - returnSpeed);
     legBL.rotation.x *= (1 - returnSpeed);
@@ -764,17 +1137,18 @@ function animate() {
   updateParticles(delta);
 
   /* ─── 남아있는 냄새 경로 맥동 애니메이션 ─── */
-  smellMarkers.forEach((marker, index) => {
-    if (marker.userData.collected) return;
-    marker.position.y = 0.18 + Math.sin(elapsed * 2.5 + index * 0.5) * 0.1;
-    marker.position.x = marker.userData.baseX + Math.sin(elapsed * 1.5 + index * 0.7) * 0.05;
-    const scale = 1.0 + Math.sin(elapsed * 3 + index * 0.6) * 0.2;
+  // [최적화] splice로 이미 제거된 마커는 배열에 없으므로 collected 체크 불필요
+  for (let i = 0; i < smellMarkers.length; i++) {
+    const marker = smellMarkers[i];
+    marker.position.y = 0.18 + Math.sin(elapsed * 2.5 + i * 0.5) * 0.1;
+    marker.position.x = marker.userData.baseX + Math.sin(elapsed * 1.5 + i * 0.7) * 0.05;
+    const scale = 1.0 + Math.sin(elapsed * 3 + i * 0.6) * 0.2;
     marker.scale.setScalar(scale);
     if (marker.userData.light) {
-      marker.userData.light.intensity = 0.4 + Math.sin(elapsed * 2 + index) * 0.3;
+      marker.userData.light.intensity = 0.4 + Math.sin(elapsed * 2 + i) * 0.3;
       marker.userData.light.position.y = marker.position.y + 0.3;
     }
-  });
+  }
 
   /* ─── 단서 상자 회전 & 링 맥동 ─── */
   clueBox.rotation.y = elapsed * 0.5;
