@@ -1113,8 +1113,8 @@ function animate() {
   }
 
   // 점프 물리 (중력 적용 → 착지 고정)
-  velocityY += gravity;
-  dogGroup.position.y += velocityY;
+  velocityY += gravity * (delta * 60);
+  dogGroup.position.y += velocityY * (delta * 60);
   if (dogGroup.position.y <= GROUND_Y) {
     dogGroup.position.y = GROUND_Y;
     velocityY  = 0;
