@@ -29,8 +29,7 @@ const camera = new THREE.PerspectiveCamera(
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled = false; // 성능 최적화: 그림자 연산 완전 제거
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.9;
 document.body.appendChild(renderer.domElement);
@@ -565,24 +564,34 @@ moonMesh.position.set(120, 160, -300);
 moonMesh.lookAt(0, 0, 0);
 scene.add(moonMesh);
 
-// ── 별 텍스처 + 메시 (정적 스프라이트 시트) ──
-const starsTex = makeCanvasTex(1024, 1024, (ctx, w, h) => {
-  ctx.fillStyle = 'transparent';
-  ctx.clearRect(0, 0, w, h);
-  const rng = (n) => Math.floor(Math.random() * n);
-  for (let i = 0; i < 320; i++) {
-    const x = rng(w), y = rng(h);
-    const r = Math.random() * 1.8 + 0.4;
-    const bright = Math.floor(Math.random() * 55 + 200);
-    ctx.fillStyle = `rgba(${bright},${bright},${Math.min(255,bright+30)},${0.6 + Math.random()*0.4})`;
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
-  }
+// ── 별 — THREE.Points 단일 객체 (Draw Call 1개로 최적화) ──
+const STAR_COUNT = 1000;
+const starPositions = new Float32Array(STAR_COUNT * 3);
+const starColors = new Float32Array(STAR_COUNT * 3);
+for (let i = 0; i < STAR_COUNT; i++) {
+  // 구면 균등 분포 (상반구 1000개)
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(1 - Math.random() * 1.2); // 하늘 위쪽에 집중
+  const r = 370 + Math.random() * 20;
+  starPositions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+  starPositions[i * 3 + 1] = Math.abs(r * Math.cos(phi)) + 20; // 지평선 위
+  starPositions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+  const bright = 0.7 + Math.random() * 0.3;
+  starColors[i * 3]     = bright;
+  starColors[i * 3 + 1] = bright;
+  starColors[i * 3 + 2] = Math.min(1.0, bright + 0.15);
+}
+const starsGeo = new THREE.BufferGeometry();
+starsGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+starsGeo.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
+const starsMat = new THREE.PointsMaterial({
+  size: 0.8,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.9,
+  depthWrite: false
 });
-const starsGeo = new THREE.SphereGeometry(380, 32, 16);
-const starsMat = new THREE.MeshBasicMaterial({
-  map: starsTex, side: THREE.BackSide, transparent: true, depthWrite: false
-});
-const starsMesh = new THREE.Mesh(starsGeo, starsMat);
+const starsMesh = new THREE.Points(starsGeo, starsMat);
 scene.add(starsMesh);
 
 // ── 구름 텍스처 생성 헬퍼 ──
@@ -716,6 +725,12 @@ const moveState = {
   right: false
 };
 
+// 점프 물리 변수
+let isJumping  = false;
+let velocityY  = 0;
+const gravity  = -0.06;
+const GROUND_Y = 0.60; // dogGroup 기본 바닥 높이
+
 window.addEventListener('keydown', (event) => {
   switch (event.code) {
     case 'KeyW': moveState.forward = true; break;
@@ -728,6 +743,12 @@ window.addEventListener('keydown', (event) => {
       break;
     case 'KeyE':
       handleInteract();
+      break;
+    case 'Space':
+      if (!isJumping) {
+        isJumping = true;
+        velocityY = 0.18;
+      }
       break;
   }
 });
@@ -777,166 +798,181 @@ clueRing.rotation.x = Math.PI / 2;
 scene.add(clueRing);
 
 /* ───────────────────────────────
-   냄새 수집 파티클 폭발 시스템
+   냄새 파티클 시스템 — THREE.Points 단일 객체 (고성능)
    ─────────────────────────────── */
-const activeParticles = []; // { mesh, velocity, life, maxLife }
+
+// ── 공통 파티클 텍스처 (소프트 원형 blur) ──
+const ptCanvas = document.createElement('canvas');
+ptCanvas.width = 64; ptCanvas.height = 64;
+const ptCtx = ptCanvas.getContext('2d');
+const ptGrd = ptCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+ptGrd.addColorStop(0,    'rgba(255,255,255,1.0)');
+ptGrd.addColorStop(0.35, 'rgba(255,255,255,0.85)');
+ptGrd.addColorStop(1.0,  'rgba(255,255,255,0.0)');
+ptCtx.fillStyle = ptGrd;
+ptCtx.beginPath(); ptCtx.arc(32, 32, 32, 0, Math.PI * 2); ptCtx.fill();
+const ptTex = new THREE.CanvasTexture(ptCanvas);
+
+/* ─── A. 강아지 발자취 Trail (80칸 순환 버퍼) ─── */
+const TRAIL_COUNT = 80;
+const trailPos = new Float32Array(TRAIL_COUNT * 3);
+const trailCol = new Float32Array(TRAIL_COUNT * 3);
+for (let i = 0; i < TRAIL_COUNT; i++) {
+  trailPos[i * 3 + 1] = -1000; // 초기 숨김
+  const h = i / TRAIL_COUNT;
+  trailCol[i * 3]     = Math.abs(Math.sin(h * Math.PI));
+  trailCol[i * 3 + 1] = Math.abs(Math.sin(h * Math.PI + 2.094));
+  trailCol[i * 3 + 2] = Math.abs(Math.sin(h * Math.PI + 4.189));
+}
+const trailGeo = new THREE.BufferGeometry();
+trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
+trailGeo.setAttribute('color',    new THREE.BufferAttribute(trailCol, 3));
+const trailMat = new THREE.PointsMaterial({
+  size: 0.22, vertexColors: true, transparent: true, opacity: 0.80,
+  map: ptTex, depthWrite: false, blending: THREE.AdditiveBlending
+});
+const dogTrailPoints = new THREE.Points(trailGeo, trailMat);
+scene.add(dogTrailPoints);
+let trailFrameCount = 0;
+
+/* ─── B. 수집 폭발 버스트 풀 (48 슬롯 고정 풀) ─── */
+const BURST_POOL = 48;
+const burstPos = new Float32Array(BURST_POOL * 3);
+const burstCol = new Float32Array(BURST_POOL * 3);
+for (let i = 0; i < BURST_POOL; i++) burstPos[i * 3 + 1] = -1000;
+const burstGeo = new THREE.BufferGeometry();
+burstGeo.setAttribute('position', new THREE.BufferAttribute(burstPos, 3));
+burstGeo.setAttribute('color',    new THREE.BufferAttribute(burstCol, 3));
+const burstMat = new THREE.PointsMaterial({
+  size: 0.30, vertexColors: true, transparent: true, opacity: 0.95,
+  map: ptTex, depthWrite: false, blending: THREE.AdditiveBlending
+});
+const burstPoints = new THREE.Points(burstGeo, burstMat);
+scene.add(burstPoints);
+const burstState = Array.from({ length: BURST_POOL }, () => ({ life: 0, vx: 0, vy: 0, vz: 0 }));
 
 function spawnSmellBurst(position, color) {
-  const particleCount = 24;
-  for (let i = 0; i < particleCount; i++) {
-    const geo = new THREE.SphereGeometry(0.06, 6, 6);
-    const mat = new THREE.MeshStandardMaterial({
-      color,
-      emissive: color,
-      emissiveIntensity: 1.2,
-      transparent: true,
-      opacity: 1.0
-    });
-    const p = new THREE.Mesh(geo, mat);
-    p.position.copy(position);
-
-    // 방사형 랜덤 속도
-    const velocity = new THREE.Vector3(
-      (Math.random() - 0.5) * 3.0,
-      Math.random() * 2.5 + 0.5,
-      (Math.random() - 0.5) * 3.0
-    );
-
-    scene.add(p);
-    activeParticles.push({
-      mesh: p,
-      velocity,
-      life: 2.0,  // 2초
-      maxLife: 2.0
-    });
+  const c = new THREE.Color(color);
+  for (let i = 0; i < 16; i++) {
+    let slot = i % BURST_POOL;
+    for (let j = 0; j < BURST_POOL; j++) { if (burstState[j].life <= 0) { slot = j; break; } }
+    const s = burstState[slot];
+    s.life = 2.0;
+    s.vx = (Math.random() - 0.5) * 3.0;
+    s.vy = Math.random() * 2.5 + 0.5;
+    s.vz = (Math.random() - 0.5) * 3.0;
+    burstPos[slot * 3]     = position.x;
+    burstPos[slot * 3 + 1] = position.y;
+    burstPos[slot * 3 + 2] = position.z;
+    burstCol[slot * 3]     = c.r;
+    burstCol[slot * 3 + 1] = c.g;
+    burstCol[slot * 3 + 2] = c.b;
   }
 }
 
-function updateParticles(delta) {
-  for (let i = activeParticles.length - 1; i >= 0; i--) {
-    const p = activeParticles[i];
-    p.life -= delta;
-
-    if (p.life <= 0) {
-      scene.remove(p.mesh);
-      p.mesh.geometry.dispose();
-      p.mesh.material.dispose();
-      activeParticles.splice(i, 1);
-      continue;
-    }
-
-    // 물리: 중력 + 감속
-    p.velocity.y -= 2.0 * delta;
-    p.velocity.multiplyScalar(1 - 1.5 * delta);
-
-    p.mesh.position.add(p.velocity.clone().multiplyScalar(delta));
-
-    // 투명도: 2초에 걸쳐 서서히 사라짐
-    const t = p.life / p.maxLife;
-    p.mesh.material.opacity = t;
-
-    // 크기: 처음에 커졌다가 줄어듦
-    const scaleCurve = t < 0.7 ? 1.0 + (1.0 - t / 0.7) * 0.8 : t * 1.5;
-    p.mesh.scale.setScalar(scaleCurve);
+function updateBursts(delta) {
+  let dirty = false;
+  for (let i = 0; i < BURST_POOL; i++) {
+    const s = burstState[i];
+    if (s.life <= 0) continue;
+    s.life -= delta;
+    if (s.life <= 0) { burstPos[i * 3 + 1] = -1000; dirty = true; continue; }
+    s.vy -= 2.0 * delta;
+    s.vx *= (1 - 1.5 * delta);
+    s.vz *= (1 - 1.5 * delta);
+    burstPos[i * 3]     += s.vx * delta;
+    burstPos[i * 3 + 1] += s.vy * delta;
+    burstPos[i * 3 + 2] += s.vz * delta;
+    dirty = true;
   }
+  if (dirty) burstGeo.attributes.position.needsUpdate = true;
 }
 
 /* ───────────────────────────────
-   냄새 추적 경로 (네온 파티클)
+   냄새 추적 경로 — THREE.Points 단일 객체 (Draw Call 1개)
    ─────────────────────────────── */
-const smellMarkers = [];
+const smellMarkers = []; // 데이터 전용 { position, baseX, collected, color, smellType, pathIdx, light }
 const smellGoal = new THREE.Vector3(0, 0.1, -26);
-const SMELL_COLLECT_DIST = 1.8; // 강아지가 이 거리 안에 들어오면 냄새 수집
-const SMELL_COLLECT_DIST_SQ = SMELL_COLLECT_DIST * SMELL_COLLECT_DIST; // distanceToSquared용 제곱값
+const SMELL_COLLECT_DIST = 1.8;
+const SMELL_COLLECT_DIST_SQ = SMELL_COLLECT_DIST * SMELL_COLLECT_DIST;
 
-// 냄새 종류 데이터
 const smellTypes = [
-  { name: '피 냄새', desc: '철분이 섞인 선명한 핏냄새. 피해자의 것으로 추정된다.' },
+  { name: '피 냄새',   desc: '철분이 섞인 선명한 핏냄새. 피해자의 것으로 추정된다.' },
   { name: '약품 냄새', desc: '클로로포름 계열의 자극적인 약품 냄새가 난다.' },
   { name: '향수 냄새', desc: '고급 장미향 향수. 피해자가 즐겨 사용하던 것이다.' },
   { name: '동물 체취', desc: '낯선 동물의 털과 체취. 용의자의 반려동물일 가능성.' },
-  { name: '흙 냄새', desc: '축축한 흙과 낙엽 냄새. 범행 장소 근처의 공원 토양과 일치.' },
+  { name: '흙 냄새',   desc: '축축한 흙과 낙엽 냄새. 범행 장소 근처의 공원 토양과 일치.' },
   { name: '담배 연기', desc: '값싼 담배 연기 냄새. 용의자의 흡연 습관과 연결된다.' },
   { name: '기름 냄새', desc: '엔진 오일 냄새. 차량으로 도주했을 가능성을 시사한다.' },
 ];
-
 let collectedSmellCount = 0;
+
+const SMELL_PATH_MAX = 29;
+const smellPathPos = new Float32Array(SMELL_PATH_MAX * 3);
+const smellPathCol = new Float32Array(SMELL_PATH_MAX * 3);
+const smellPathGeo = new THREE.BufferGeometry();
+smellPathGeo.setAttribute('position', new THREE.BufferAttribute(smellPathPos, 3));
+smellPathGeo.setAttribute('color',    new THREE.BufferAttribute(smellPathCol, 3));
+const smellPathMat = new THREE.PointsMaterial({
+  size: 0.32, vertexColors: true, transparent: true, opacity: 0.90,
+  map: ptTex, depthWrite: false, blending: THREE.AdditiveBlending
+});
+const smellPathPoints = new THREE.Points(smellPathGeo, smellPathMat);
+scene.add(smellPathPoints);
 
 function createSmellPath() {
   const steps = 28;
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
-    const x =
-      THREE.MathUtils.lerp(0, smellGoal.x, t) +
-      Math.sin(t * Math.PI * 3) * 1.2;
+    const x = THREE.MathUtils.lerp(0, smellGoal.x, t) + Math.sin(t * Math.PI * 3) * 1.2;
     const z = THREE.MathUtils.lerp(4, smellGoal.z, t);
     const color = i % 2 === 0 ? 0xff00ff : 0x00ff88;
-
-    const geo = new THREE.SphereGeometry(0.15, 12, 12);
-    const mat = new THREE.MeshStandardMaterial({
-      color,
-      emissive: color,
-      emissiveIntensity: 0.9,
-      roughness: 0.2,
-      transparent: true,
-      opacity: 0.85
+    const c = new THREE.Color(color);
+    smellMarkers.push({
+      position: new THREE.Vector3(x, 0.18, z),
+      baseX: x, collected: false, color,
+      smellType: smellTypes[i % smellTypes.length],
+      pathIdx: i, light: null
     });
-    const marker = new THREE.Mesh(geo, mat);
-    marker.position.set(x, 0.18, z);
-    marker.userData.isSmell = true;
-    marker.userData.baseX = x;
-    marker.userData.collected = false;
-    marker.userData.dying = false;
-    marker.userData.color = color;
-    marker.userData.smellType = smellTypes[i % smellTypes.length];
-    smellMarkers.push(marker);
-    scene.add(marker);
-
-    if (i % 4 === 0) {
+    smellPathPos[i * 3]     = x;
+    smellPathPos[i * 3 + 1] = 0.18;
+    smellPathPos[i * 3 + 2] = z;
+    smellPathCol[i * 3]     = c.r;
+    smellPathCol[i * 3 + 1] = c.g;
+    smellPathCol[i * 3 + 2] = c.b;
+    if (i % 8 === 0) { // 라이트 수 축소 (렉 감소)
       const light = new THREE.PointLight(color, 0.6, 4, 2);
       light.position.set(x, 0.5, z);
-      marker.userData.light = light;
+      smellMarkers[i].light = light;
       scene.add(light);
     }
   }
+  smellPathGeo.attributes.position.needsUpdate = true;
+  smellPathGeo.attributes.color.needsUpdate = true;
 }
 
 createSmellPath();
 
-// 냄새 수집 로직
+// 냄새 수집 로직 — distanceToSquared 사용
 function checkSmellCollection() {
-  // 뒤에서 앞으로 순회해야 splice 시 인덱스 오류 없음
-  for (let i = smellMarkers.length - 1; i >= 0; i--) {
+  for (let i = 0; i < smellMarkers.length; i++) {
     const marker = smellMarkers[i];
-
-    // [최적화 1] distanceToSquared — sqrt 연산 없이 가벼운 거리 비교
+    if (marker.collected) continue;
     const distSq = dogGroup.position.distanceToSquared(marker.position);
     if (distSq < SMELL_COLLECT_DIST_SQ) {
+      marker.collected = true;
       collectedSmellCount++;
-
-      // 파티클 폭발 생성
-      spawnSmellBurst(marker.position.clone(), marker.userData.color);
-
-      // [최적화 2] geometry & material 메모리 완전 해제 후 씬에서 제거
-      scene.remove(marker);
-      marker.geometry.dispose();
-      marker.material.dispose();
-      if (marker.userData.light) scene.remove(marker.userData.light);
-
-      // [최적화 3] 배열에서 즉시 제거 → 다음 프레임부터 충돌 검사 대상에서 완전 제외
-      smellMarkers.splice(i, 1);
-
-      // 수첩에 냄새 기록 추가 (smellType/color는 이미 지역 변수로 캡처)
-      addSmellToNotebook(marker.userData.smellType, marker.userData.color);
-
-      // [최적화 4] UI 업데이트를 requestAnimationFrame 바깥에서 처리해 렌더 루프 부담 최소화
+      // Points 버퍼에서 숨기기
+      smellPathPos[marker.pathIdx * 3 + 1] = -1000;
+      smellPathGeo.attributes.position.needsUpdate = true;
+      if (marker.light) scene.remove(marker.light);
+      spawnSmellBurst(marker.position.clone(), marker.color);
+      addSmellToNotebook(marker.smellType, marker.color);
+      const remaining = smellMarkers.filter(m => !m.collected).length;
       if (sequenceStatus) {
-        const remaining = smellMarkers.length; // splice 후 남은 길이 = 미수집 수
-        if (remaining > 0) {
-          sequenceStatus.textContent = `냄새 수집 중... (${collectedSmellCount}개 수집, ${remaining}개 남음)`;
-        } else {
-          sequenceStatus.textContent = '모든 냄새를 수집했다! 붉게 빛나는 상자에 접근해 E 키로 조사하세요.';
-        }
+        sequenceStatus.textContent = remaining > 0
+          ? `냄새 수집 중... (${collectedSmellCount}개 수집, ${remaining}개 남음)`
+          : '모든 냄새를 수집했다! 붉게 빛나는 상자에 접근해 E 키로 조사하세요.';
       }
     }
   }
@@ -1073,7 +1109,14 @@ function animate() {
     }
   }
 
-  dogGroup.position.y = 0.60;
+  // 점프 물리 (중력 적용 → 착지 고정)
+  velocityY += gravity;
+  dogGroup.position.y += velocityY;
+  if (dogGroup.position.y <= GROUND_Y) {
+    dogGroup.position.y = GROUND_Y;
+    velocityY  = 0;
+    isJumping  = false;
+  }
 
   /* ─── 꼬리 흔들기 (살랑살랑) ─── */
   tailGroup.rotation.y = Math.sin(elapsed * 5.5) * 0.45;
@@ -1130,25 +1173,44 @@ function animate() {
     spotLight.target.position.copy(dogGroup.position).add(lightDir.multiplyScalar(10));
   }
 
+  /* ─── 강아지 발자취 Trail (3프레임마다 순환 버퍼 시프트) ─── */
+  trailFrameCount++;
+  if (trailFrameCount >= 3) {
+    trailFrameCount = 0;
+    for (let i = TRAIL_COUNT - 1; i > 0; i--) {
+      trailPos[i * 3]     = trailPos[(i - 1) * 3];
+      trailPos[i * 3 + 1] = trailPos[(i - 1) * 3 + 1];
+      trailPos[i * 3 + 2] = trailPos[(i - 1) * 3 + 2];
+    }
+    trailPos[0] = dogGroup.position.x + (Math.random() - 0.5) * 0.12;
+    trailPos[1] = 0.05 + Math.random() * 0.06;
+    trailPos[2] = dogGroup.position.z + (Math.random() - 0.5) * 0.12;
+    trailGeo.attributes.position.needsUpdate = true;
+  }
+
   /* ─── 냄새 수집 체크 ─── */
   checkSmellCollection();
 
-  /* ─── 수집 파티클 업데이트 ─── */
-  updateParticles(delta);
+  /* ─── 버스트 파티클 업데이트 ─── */
+  updateBursts(delta);
 
-  /* ─── 남아있는 냄새 경로 맥동 애니메이션 ─── */
-  // [최적화] splice로 이미 제거된 마커는 배열에 없으므로 collected 체크 불필요
+  /* ─── 냄새 경로 맥동 애니메이션 (Points 버퍼 업데이트) ─── */
   for (let i = 0; i < smellMarkers.length; i++) {
     const marker = smellMarkers[i];
-    marker.position.y = 0.18 + Math.sin(elapsed * 2.5 + i * 0.5) * 0.1;
-    marker.position.x = marker.userData.baseX + Math.sin(elapsed * 1.5 + i * 0.7) * 0.05;
-    const scale = 1.0 + Math.sin(elapsed * 3 + i * 0.6) * 0.2;
-    marker.scale.setScalar(scale);
-    if (marker.userData.light) {
-      marker.userData.light.intensity = 0.4 + Math.sin(elapsed * 2 + i) * 0.3;
-      marker.userData.light.position.y = marker.position.y + 0.3;
+    if (marker.collected) continue;
+    const idx = marker.pathIdx;
+    const newY = 0.18 + Math.sin(elapsed * 2.5 + i * 0.5) * 0.1;
+    const newX = marker.baseX + Math.sin(elapsed * 1.5 + i * 0.7) * 0.05;
+    smellPathPos[idx * 3]     = newX;
+    smellPathPos[idx * 3 + 1] = newY;
+    marker.position.x = newX;
+    marker.position.y = newY;
+    if (marker.light) {
+      marker.light.intensity = 0.4 + Math.sin(elapsed * 2 + i) * 0.3;
+      marker.light.position.y = newY + 0.3;
     }
   }
+  smellPathGeo.attributes.position.needsUpdate = true;
 
   /* ─── 단서 상자 회전 & 링 맥동 ─── */
   clueBox.rotation.y = elapsed * 0.5;
