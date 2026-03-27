@@ -416,6 +416,9 @@ let walkCycle = 0;
 // 다리 중심 -0.38, 캡슐 반구 ≈ 0.19 → 최하단 ≈ -0.57
 // 그룹 Y = 0.60 으로 올리면 다리 바닥이 y≈0 에 닿음
 dogGroup.position.set(0, 0.60, 4);
+// 첫 냄새 파티클(z=-26 방향 = -Z)을 향하도록 초기 회전
+// atan2(0, -1) = Math.PI 이므로 강아지 앞면(+Z 로컬)이 -Z 월드를 향함
+dogGroup.rotation.y = Math.PI;
 scene.add(dogGroup);
 
 
@@ -630,7 +633,7 @@ const cloudMeshes = cloudPositions.map(([x,y,z]) => {
 /* ───────────────────────────────
    낮/밤 전환
    ─────────────────────────────── */
-let timeOfDay = 'night';
+let timeOfDay = 'day';
 
 function applyLighting() {
   if (timeOfDay === 'day') {
@@ -728,7 +731,7 @@ const moveState = {
 // 점프 물리 변수
 let isJumping  = false;
 let velocityY  = 0;
-const gravity  = -0.06;
+const gravity  = -0.004;
 const GROUND_Y = 0.60; // dogGroup 기본 바닥 높이
 
 window.addEventListener('keydown', (event) => {
@@ -747,7 +750,7 @@ window.addEventListener('keydown', (event) => {
     case 'Space':
       if (!isJumping) {
         isJumping = true;
-        velocityY = 0.18;
+        velocityY = 0.06;
       }
       break;
   }
