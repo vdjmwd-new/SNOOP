@@ -641,35 +641,6 @@ const moonLight = new THREE.DirectionalLight(0x4169E1, 0.45);
 moonLight.position.set(-20, 50, -10);
 scene.add(moonLight);
 
-// 가로등
-const streetLamps = [
-  { x: -3, z: -10 },
-  { x: 3, z: -20 },
-  { x: -3, z: -32 },
-  { x: 3, z: 2 }
-];
-
-streetLamps.forEach(pos => {
-  const poleGeo = new THREE.CylinderGeometry(0.08, 0.08, 4, 6);
-  const poleMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.5 });
-  const pole = new THREE.Mesh(poleGeo, poleMat);
-  pole.position.set(pos.x, 2, pos.z);
-  scene.add(pole);
-
-  const lampLight = new THREE.PointLight(0xffcc88, 1.5, 15, 2);
-  lampLight.position.set(pos.x, 4.2, pos.z);
-  scene.add(lampLight);
-
-  const bulbGeo = new THREE.SphereGeometry(0.15, 8, 8);
-  const bulbMat = new THREE.MeshStandardMaterial({
-    color: 0xffcc88,
-    emissive: 0xffcc88,
-    emissiveIntensity: 1.0
-  });
-  const bulb = new THREE.Mesh(bulbGeo, bulbMat);
-  bulb.position.set(pos.x, 4.1, pos.z);
-  scene.add(bulb);
-});
 
 /* ───────────────────────────────
    하늘 요소 (정적 Canvas 텍스처 기반)
@@ -950,40 +921,8 @@ window.addEventListener('keyup', (event) => {
   }
 });
 
-/* ───────────────────────────────
-   단서 상자
-   ─────────────────────────────── */
 const raycaster = new THREE.Raycaster();
 const interactableObjects = [];
-let lookingAtClue = false;
-let clueInvestigated = false;
-
-const clueBoxGeo = new THREE.BoxGeometry(1, 1, 1);
-const clueBoxMat = new THREE.MeshStandardMaterial({
-  color: 0x1a0000,
-  emissive: 0xcc0000,
-  emissiveIntensity: 0.6,
-  roughness: 0.5,
-  metalness: 0.2
-});
-const clueBox = new THREE.Mesh(clueBoxGeo, clueBoxMat);
-clueBox.position.set(0, 0.5, -26);
-clueBox.castShadow = true;
-scene.add(clueBox);
-interactableObjects.push(clueBox);
-
-const clueRingGeo = new THREE.TorusGeometry(1.0, 0.04, 8, 32);
-const clueRingMat = new THREE.MeshStandardMaterial({
-  color: 0xff0000,
-  emissive: 0xff0000,
-  emissiveIntensity: 0.8,
-  transparent: true,
-  opacity: 0.6
-});
-const clueRing = new THREE.Mesh(clueRingGeo, clueRingMat);
-clueRing.position.set(0, 0.5, -26);
-clueRing.rotation.x = Math.PI / 2;
-scene.add(clueRing);
 
 /* ───────────────────────────────
    냄새 파티클 시스템 — THREE.Points 단일 객체 (고성능)
@@ -1249,13 +1188,7 @@ if (overlay) {
 }
 
 function handleInteract() {
-  if (!lookingAtClue || clueInvestigated) return;
-  clueInvestigated = true;
-  if (notebookClueText) {
-    notebookClueText.textContent =
-      '첫 단서 상자 내부에서 피해자의 향수 냄새와 낯선 동물 털이 함께 발견되었다.';
-  }
-  openNotebook();
+  // 단서 상자 제거됨 — 향후 방 내 상호작용 로직으로 대체 가능
 }
 
 /* ───────────────────────────────
@@ -1485,19 +1418,7 @@ function animate() {
   }
   smellPathGeo.attributes.position.needsUpdate = true;
 
-  /* ─── 단서 상자 회전 & 링 맥동 ─── */
-  clueBox.rotation.y = elapsed * 0.5;
-  clueRing.rotation.z = elapsed * 0.8;
-  const ringScale = 1.0 + Math.sin(elapsed * 2) * 0.15;
-  clueRing.scale.setScalar(ringScale);
 
-  /* ─── 레이캐스트: 단서 상자 주시 확인 ─── */
-  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-  const intersects = raycaster.intersectObjects(interactableObjects, false);
-  lookingAtClue = intersects.length > 0;
-  if (interactionHint) {
-    interactionHint.classList.toggle('hidden', !lookingAtClue || !isDogMode);
-  }
 
   /* ─── 옷장 근접 스위칭 UI ─── */
   if (isDogMode && !treatCollected && wardrobeGroup) {
